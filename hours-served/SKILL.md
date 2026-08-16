@@ -60,8 +60,9 @@ change one, say so in the report.
 | 2 | **Only stitch gaps of 30 minutes or less** | Lunch, meetings and going home are not work. A longer gap is dropped whole, not halved. |
 | 3 | **A day starts at 05:00** | 3am work belongs to the **previous** day. On a midnight boundary an all-nighter is split in two and both dates end up lying. |
 | 4 | **"Typed" is a floor, not the answer** | It only spans turns the human actually typed. The truth sits between Active and Typed. |
-| 5 | **Drop harness-generated turns from the prompt count** | Auto-generated branch names (`promptSource: sdk`), command stubs and subagent turns were not typed by a person. They still count as *activity*, since a human action triggered them. |
+| 5 | **Drop harness-generated turns from the prompt count** | Auto-generated branch names (`promptSource: sdk`), background task notifications (`promptSource: system`), command stubs and subagent turns were not typed by a person. `typed` and `queued` are. They all still count as *activity*, since a human action triggered them. |
 | 6 | **Give a range, not a single number** | Say "7 to 8 hours", not "7h39m". The shape of the number should admit it is an estimate. |
+| 7 | **A day off gets a row, not a gap** | A missing date is easy to read straight past. `0m ... - -` is not. The script emits every calendar day between the first and last day of activity, so count the days off from the rows — do not try to spot holes in the date column. |
 
 </rules>
 

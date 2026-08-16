@@ -35,10 +35,12 @@ STR = {
         "weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
         "col": ["Date", "Day", "Active", "({i}m)", "Typed", "First", "Last", "Prompts", "Sess"],
         "total": "TOTAL {t} over {d} days  ·  {avg}/day  ·  {p:,} prompts",
-        "total2": "      at {i}m cutoff {t} (-{s:.0f}%)  ·  typed-only floor {f}",
+        "total2": "      {w} days worked, {o} off  ·  {avgw}/day worked",
+        "total3": "      at {i}m cutoff {t} (-{s:.0f}%)  ·  typed-only floor {f}",
         "weekly": "=== Weekly (weeks start Monday) ===",
-        "weekly_row": "{a} ~ {b}  {t:>9}  ({d} days, {avg}/day)",
+        "weekly_row": "{a} ~ {b}  {t:>9}  ({w} of {d} days worked, {avg}/day)",
         "projects": "=== Top 3 projects per day ===",
+        "day_off": "(off)",
         "saved": "JSON written: {path}",
     },
     "ko": {
@@ -49,10 +51,12 @@ STR = {
         "weekdays": ["월", "화", "수", "목", "금", "토", "일"],
         "col": ["날짜", "요일", "활동", "({i}m)", "입력기준", "첫활동", "끝", "프롬프트", "세션"],
         "total": "합계 {t} / {d}일  ·  일평균 {avg}  ·  프롬프트 {p:,}건",
-        "total2": "     {i}분 기준 {t} (-{s:.0f}%)  ·  입력기준 하한 {f}",
+        "total2": "     일한 날 {w}일, 쉰 날 {o}일  ·  일한 날 평균 {avgw}",
+        "total3": "     {i}분 기준 {t} (-{s:.0f}%)  ·  입력기준 하한 {f}",
         "weekly": "=== 주별 (월요일 시작) ===",
-        "weekly_row": "{a} ~ {b}  {t:>9}  ({d}일, 일평균 {avg})",
+        "weekly_row": "{a} ~ {b}  {t:>9}  ({d}일 중 {w}일 일함, 일평균 {avg})",
         "projects": "=== 일자별 프로젝트 상위 3 ===",
+        "day_off": "(휴무)",
         "saved": "JSON 저장: {path}",
     },
 }
@@ -130,13 +134,17 @@ def is_real_user_prompt(rec):
     """True only for turns a human actually typed."""
     if rec.get("isSidechain") or rec.get("isMeta"):
         return False
-    if rec.get("promptSource") == "sdk":  # harness-generated turns, e.g. branch naming
+    # harness-generated turns: "sdk" = branch naming and the like, "system" = background
+    # task notifications. "typed" and "queued" are both the human at the keyboard.
+    if rec.get("promptSource") in ("sdk", "system"):
         return False
     content = (rec.get("message") or {}).get("content")
     if isinstance(content, str):
         s = content.strip()
+        # belt and braces: older transcripts predate promptSource entirely
         stubs = ("<local-command-caveat>", "<command-name>", "<command-message>",
-                 "<local-command-stdout>", "<system-reminder>", "<user-prompt-submit-hook>")
+                 "<local-command-stdout>", "<system-reminder>", "<user-prompt-submit-hook>",
+                 "<task-notification>")
         return bool(s) and not s.startswith(stubs)
     if isinstance(content, list):
         # a user record carrying only tool_result blocks is not a human turn
@@ -214,7 +222,18 @@ def active_seconds(eps, idle_gap):
 
 
 def hm(sec):
+    if sec < 60:  # a day off, or a day with a single stray event
+        return "0m"
     return f"{int(sec // 3600)}h{int((sec % 3600) // 60):02d}m"
+
+
+def span_days(first, last):
+    """Every calendar day from first to last inclusive, so days off keep their row."""
+    out, day = [], first
+    while day <= last:
+        out.append(day)
+        day += dt.timedelta(days=1)
+    return out
 
 
 def width(s):
@@ -244,18 +263,22 @@ def main():
         sys.exit(t["no_data"])
 
     idle, tight = args.idle * 60, args.idle_tight * 60
+    worked = sorted(set(events) | set(prompts))
     rows = []
-    for day in sorted(set(events) | set(prompts)):
-        eps = events[day]
+    # every day between the first and last day of activity, so a day off is a visible
+    # row rather than a hole in the date column. No leading/trailing zero padding.
+    for day in span_days(worked[0], worked[-1]):
+        eps = events.get(day) or []
         rows.append(dict(
             day=day, wd=t["weekdays"][day.weekday()],
             active=active_seconds(eps, idle),
             active_tight=active_seconds(eps, tight),
-            typed=active_seconds(prompts[day], idle),
-            first=dt.datetime.fromtimestamp(min(eps), tz),
-            last=dt.datetime.fromtimestamp(max(eps), tz),
-            n_prompt=len(prompts[day]), n_session=len(sessions[day]), n_event=len(eps),
-            top=sorted(projects[day].items(), key=lambda kv: -kv[1])[:3],
+            typed=active_seconds(prompts.get(day) or [], idle),
+            first=dt.datetime.fromtimestamp(min(eps), tz) if eps else None,
+            last=dt.datetime.fromtimestamp(max(eps), tz) if eps else None,
+            n_prompt=len(prompts.get(day) or []), n_session=len(sessions.get(day) or ()),
+            n_event=len(eps),
+            top=sorted(projects[day].items(), key=lambda kv: -kv[1])[:3] if eps else [],
         ))
 
     tz_hours = tz.utcoffset(dt.datetime.now()).total_seconds() / 3600
@@ -270,7 +293,9 @@ def main():
     print("-" * width(line))
     for r in rows:
         cells = [r["day"].isoformat(), r["wd"], hm(r["active"]), hm(r["active_tight"]),
-                 hm(r["typed"]), r["first"].strftime("%H:%M"), r["last"].strftime("%H:%M"),
+                 hm(r["typed"]),
+                 r["first"].strftime("%H:%M") if r["first"] else "-",
+                 r["last"].strftime("%H:%M") if r["last"] else "-",
                  r["n_prompt"], r["n_session"]]
         print("".join(pad(c, w, x) for c, w, x in zip(cells, COL_W, right)))
     print("-" * width(line))
@@ -278,9 +303,12 @@ def main():
     total = sum(r["active"] for r in rows)
     total_tight = sum(r["active_tight"] for r in rows)
     shrink = (1 - total_tight / total) * 100 if total else 0
+    n_worked = sum(1 for r in rows if r["n_event"])
     print(t["total"].format(t=hm(total), d=len(rows), avg=hm(total / len(rows)),
                             p=sum(r["n_prompt"] for r in rows)))
-    print(t["total2"].format(i=f"{args.idle_tight:g}", t=hm(total_tight), s=shrink,
+    print(t["total2"].format(w=n_worked, o=len(rows) - n_worked,
+                             avgw=hm(total / n_worked) if n_worked else hm(0)))
+    print(t["total3"].format(i=f"{args.idle_tight:g}", t=hm(total_tight), s=shrink,
                              f=hm(sum(r["typed"] for r in rows))))
 
     print("\n" + t["weekly"])
@@ -291,16 +319,18 @@ def main():
         rs = weeks[wk]
         s = sum(r["active"] for r in rs)
         print(t["weekly_row"].format(a=wk, b=wk + dt.timedelta(days=6), t=hm(s),
-                                     d=len(rs), avg=hm(s / len(rs))))
+                                     d=len(rs), w=sum(1 for r in rs if r["n_event"]),
+                                     avg=hm(s / len(rs))))
 
     print("\n" + t["projects"])
     for r in rows:
-        tops = ", ".join(f"{k.lstrip('-')}({v})" for k, v in r["top"])
+        tops = ", ".join(f"{k.lstrip('-')}({v})" for k, v in r["top"]) or t["day_off"]
         print(f"{r['day']} {r['wd']}  {tops}")
 
     if args.json_out:
-        payload = [{**r, "day": r["day"].isoformat(), "first": r["first"].isoformat(),
-                    "last": r["last"].isoformat()} for r in rows]
+        payload = [{**r, "day": r["day"].isoformat(),
+                    "first": r["first"].isoformat() if r["first"] else None,
+                    "last": r["last"].isoformat() if r["last"] else None} for r in rows]
         with open(args.json_out, "w") as fh:
             json.dump(payload, fh, ensure_ascii=False, indent=1)
         print(t["saved"].format(path=args.json_out), file=sys.stderr)

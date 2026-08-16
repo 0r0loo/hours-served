@@ -25,6 +25,7 @@ Date       Day     Active    (15m)     Typed   First   Last  Prompts  Sess
 2026-03-15 Sun         0m       0m        0m       -      -        0     0
 --------------------------------------------------------------------------
 TOTAL 46h52m over 7 days  ·  6h41m/day  ·  638 prompts
+      6 days worked, 1 off  ·  7h48m/day worked
       at 15m cutoff 40h49m (-13%)  ·  typed-only floor 37h44m
 ```
 
@@ -77,7 +78,7 @@ Python 3.8+, standard library only.
 
 ## How it counts
 
-Four decisions produce the number. They are worth knowing before you quote it.
+Five decisions produce the number. They are worth knowing before you quote it.
 
 **Every session is merged into one timeline.** You might have five worktrees and a
 dozen subagents running at once, but you only have one body. Summing per session
@@ -92,6 +93,11 @@ boundary, one all-nighter is split across two dates and both of them lie.
 **Two numbers, not one.** *Active* stitches all short gaps, so it leans high.
 *Typed* spans only turns you typed yourself, so it leans low. The truth is between
 them, and the tool refuses to pretend otherwise.
+
+**A day off keeps its row.** Every calendar day between your first and last day of
+activity is printed, even at `0m`. A missing date is easy to read straight past; a
+row of zeros is not. The totals give you both averages — over the calendar, and over
+the days you actually worked.
 
 ## What it cannot tell you
 
@@ -159,6 +165,10 @@ python3 analyze.py --lang ko
 **숫자는 한 쌍입니다.** *활동시간* 은 짧은 공백을 모두 이어붙이므로 상한에
 가깝고, *입력기준* 은 직접 친 프롬프트 사이만 재므로 하한입니다. 진짜 값은 그
 사이에 있고, 이 도구는 그걸 하나의 숫자인 척하지 않습니다.
+
+**쉰 날도 행으로 남깁니다.** 첫 활동일과 마지막 활동일 사이의 모든 날짜가 `0m`
+으로라도 찍힙니다. 날짜가 비어 있으면 그냥 넘겨 읽기 쉽지만 0 으로 채워진 행은
+그렇지 않습니다. 합계에는 달력 기준 평균과 일한 날 기준 평균이 함께 나옵니다.
 
 ## 이 숫자가 말하지 못하는 것
 
