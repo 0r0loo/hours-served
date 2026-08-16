@@ -37,7 +37,7 @@ fully offline.
    | "last 3 weeks", "lately" | `--days 21` |
    | "this week" | `--days 7` |
    | "Jul 25 to Aug 15" | `--from 2026-07-25 --to 2026-08-15` |
-   | "only work, not side projects" | `--only <repo-substring>` (repeatable) |
+   | "only work, not side projects" | `--only <repo-substring>` — matches the project names printed under "Top 3 projects", case-insensitive, repeatable |
    | "count my 3am sessions on that same day" | `--day-start 0` |
 
 2. **Match the output language to the conversation.** Add `--lang ko` when the user is

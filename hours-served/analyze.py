@@ -89,9 +89,10 @@ def build_parser():
                    help="UTC offset in hours (default: your local timezone)")
     p.add_argument("--root", default=None, help="session log root (default ~/.claude/projects)")
     p.add_argument("--only", action="append", default=[], metavar="SUBSTR",
-                   help="count only projects whose path contains SUBSTR (repeatable)")
+                   help="count only projects whose name contains SUBSTR, case-insensitive "
+                        "(repeatable). Matches the names shown under 'Top 3 projects'")
     p.add_argument("--exclude", action="append", default=[], metavar="SUBSTR",
-                   help="skip projects whose path contains SUBSTR (repeatable)")
+                   help="skip projects whose name contains SUBSTR, case-insensitive (repeatable)")
     p.add_argument("--lang", choices=sorted(STR), default=None,
                    help="output language (default: from your locale, else en)")
     p.add_argument("--json", dest="json_out", metavar="PATH", help="write per-day numbers as JSON")
@@ -192,20 +193,27 @@ def collect(root, start, end, tz, day_start, only, exclude, t):
 
     files = []
     for dirpath, _, names in os.walk(root):
+        # The tree is <project>/<session>.jsonl but also
+        # <project>/<session>/subagents/[workflows/<id>/]agent-*.jsonl, so the
+        # containing folder is often "subagents" or a workflow id. Only the first
+        # component below the root names a project; anything else buckets more than
+        # half the transcripts under a folder that is not a project at all.
+        rel = os.path.relpath(dirpath, root)
+        project = os.path.basename(root) if rel == os.curdir else rel.split(os.sep)[0]
+        if only and not any(s.lower() in project.lower() for s in only):
+            continue
+        if exclude and any(s.lower() in project.lower() for s in exclude):
+            continue
         for n in names:
             if not n.endswith(".jsonl"):
                 continue
             path = os.path.join(dirpath, n)
-            if only and not any(s in path for s in only):
-                continue
-            if exclude and any(s in path for s in exclude):
-                continue
             try:  # never open a file last written before the window
                 if os.path.getmtime(path) < start.timestamp() - 86400:
                     continue
             except OSError:
                 continue
-            files.append((path, os.path.basename(dirpath)))
+            files.append((path, project))
 
     print(t["scanning"].format(n=len(files)), file=sys.stderr)
     offset = dt.timedelta(hours=day_start)

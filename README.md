@@ -70,8 +70,8 @@ Python 3.8+, standard library only.
 ```
 --days 21                     look back N days (default 21)
 --from 2026-07-25 --to 2026-08-15
---only myrepo                 count only projects matching a substring (repeatable)
---exclude sideproject         skip projects matching a substring (repeatable)
+--only myrepo                 only projects whose name contains this, case-insensitive
+--exclude sideproject         skip projects whose name contains this (both repeatable)
 --day-start 0                 midnight day boundary (default 5am)
 --idle 15                     idle cutoff in minutes (default 30)
 --tz 0                        UTC offset (default: your local timezone)
