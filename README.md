@@ -25,8 +25,12 @@ Date       Day     Active    (15m)     Typed   First   Last  Prompts  Sess
 2026-03-15 Sun         0m       0m        0m       -      -        0     0
 --------------------------------------------------------------------------
 TOTAL 46h52m over 7 days  ·  6h41m/day  ·  638 prompts
-      6 days worked, 1 off  ·  7h48m/day worked
+      6 days worked, 1 off  ·  longest streak 6 days  ·  7h48m/day worked
       at 15m cutoff 40h49m (-13%)  ·  typed-only floor 37h44m
+
+=== When the work happens (share of active time) ===
+0h ▆▅▃▂    ▁▁▃▆▆▇▇▇█▇▇▅▄▄▆▆ 24h
+late night 00-05 16%  ·  morning 05-09 1%  ·  daytime 09-18 51%  ·  evening 18-24 32%
 ```
 
 *(numbers above are illustrative)*
@@ -97,13 +101,21 @@ them, and the tool refuses to pretend otherwise.
 **A day off keeps its row.** Every calendar day between your first and last day of
 activity is printed, even at `0m`. A missing date is easy to read straight past; a
 row of zeros is not. The totals give you both averages — over the calendar, and over
-the days you actually worked.
+the days you actually worked — plus the longest streak you went without a day off.
+
+**The clock matters as much as the total.** Twelve hours starting at 09:00 and twelve
+starting at 14:00 are not the same life, and a daily total cannot tell them apart, so
+active time is also split across the hours it actually covers. A run from 23:40 to
+00:20 is twenty minutes of each hour, not forty of whichever end you picked.
 
 ## What it cannot tell you
 
 - **Active is closer to a ceiling.** Walking away while Claude works still counts,
   as long as the next event lands within the cutoff. `--idle 15` typically trims ~10%.
 - **Typed is a floor.** It measures only the spans between your own keystrokes.
+- **Every run of work is cut short at its end.** A stitched run stops at its last
+  event, so reading the final answer, or thinking before you shut the laptop, is
+  never counted. This bias pulls the opposite way, on every block of every day.
 - **Work without Claude is invisible.** Meetings, Slack, browser QA, reading code,
   querying a production database — none of it is here. Your real hours are certainly
   higher than the table shows.
@@ -168,7 +180,13 @@ python3 analyze.py --lang ko
 
 **쉰 날도 행으로 남깁니다.** 첫 활동일과 마지막 활동일 사이의 모든 날짜가 `0m`
 으로라도 찍힙니다. 날짜가 비어 있으면 그냥 넘겨 읽기 쉽지만 0 으로 채워진 행은
-그렇지 않습니다. 합계에는 달력 기준 평균과 일한 날 기준 평균이 함께 나옵니다.
+그렇지 않습니다. 합계에는 달력 기준 평균과 일한 날 기준 평균, 그리고 하루도 안 쉬고
+이어간 최장 연속 일수가 함께 나옵니다.
+
+**총량만큼 시각도 중요합니다.** 09시에 시작하는 12시간과 14시에 시작하는 12시간은
+같은 삶이 아닌데, 일별 합계는 그 둘을 구분하지 못합니다. 그래서 활동시간을 실제로
+걸친 시간대에 나눠 담습니다. 23:40~00:20 은 각 시간대에 20분씩이지 한쪽에 40분이
+아닙니다.
 
 ## 이 숫자가 말하지 못하는 것
 

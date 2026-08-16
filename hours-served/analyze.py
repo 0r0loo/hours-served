@@ -35,10 +35,13 @@ STR = {
         "weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
         "col": ["Date", "Day", "Active", "({i}m)", "Typed", "First", "Last", "Prompts", "Sess"],
         "total": "TOTAL {t} over {d} days  ·  {avg}/day  ·  {p:,} prompts",
-        "total2": "      {w} days worked, {o} off  ·  {avgw}/day worked",
+        "total2": "      {w} days worked, {o} off  ·  longest streak {s} days  ·  {avgw}/day worked",
         "total3": "      at {i}m cutoff {t} (-{s:.0f}%)  ·  typed-only floor {f}",
         "weekly": "=== Weekly (weeks start Monday) ===",
         "weekly_row": "{a} ~ {b}  {t:>9}  ({w} of {d} days worked, {avg}/day)",
+        "clock": "=== When the work happens (share of active time) ===",
+        "buckets": [("late night 00-05", 0, 5), ("morning 05-09", 5, 9),
+                    ("daytime 09-18", 9, 18), ("evening 18-24", 18, 24)],
         "projects": "=== Top 3 projects per day ===",
         "day_off": "(off)",
         "saved": "JSON written: {path}",
@@ -51,10 +54,13 @@ STR = {
         "weekdays": ["월", "화", "수", "목", "금", "토", "일"],
         "col": ["날짜", "요일", "활동", "({i}m)", "입력기준", "첫활동", "끝", "프롬프트", "세션"],
         "total": "합계 {t} / {d}일  ·  일평균 {avg}  ·  프롬프트 {p:,}건",
-        "total2": "     일한 날 {w}일, 쉰 날 {o}일  ·  일한 날 평균 {avgw}",
+        "total2": "     일한 날 {w}일, 쉰 날 {o}일  ·  최장 연속 {s}일  ·  일한 날 평균 {avgw}",
         "total3": "     {i}분 기준 {t} (-{s:.0f}%)  ·  입력기준 하한 {f}",
         "weekly": "=== 주별 (월요일 시작) ===",
         "weekly_row": "{a} ~ {b}  {t:>9}  ({d}일 중 {w}일 일함, 일평균 {avg})",
+        "clock": "=== 몇 시에 일하는가 (활동시간 비중) ===",
+        "buckets": [("심야 00-05시", 0, 5), ("아침 05-09시", 5, 9),
+                    ("낮 09-18시", 9, 18), ("저녁 18-24시", 18, 24)],
         "projects": "=== 일자별 프로젝트 상위 3 ===",
         "day_off": "(휴무)",
         "saved": "JSON 저장: {path}",
@@ -101,9 +107,32 @@ def pick_lang(arg_lang):
 
 
 def local_tz(arg_tz):
+    """A fixed offset for --tz, else None meaning 'the system zone'.
+
+    None is deliberate. Freezing today's offset onto every date in the window
+    shifts historical timestamps by an hour whenever the window crosses a DST
+    change, and the day boundary shifts with them, so events near it land on the
+    wrong date. Passing None to astimezone() resolves the offset per timestamp.
+    """
     if arg_tz is not None:
         return dt.timezone(dt.timedelta(hours=arg_tz))
-    return dt.datetime.now().astimezone().tzinfo
+    return None
+
+
+def as_local(naive, tz):
+    """Read a naive wall-clock time in the target zone, honouring DST on that date."""
+    if tz is not None:
+        return naive.replace(tzinfo=tz)
+    return naive.astimezone()  # a naive datetime is presumed to be system-local
+
+
+def from_epoch(ep, tz):
+    """Epoch seconds -> an aware datetime in the target zone."""
+    return dt.datetime.fromtimestamp(ep, dt.timezone.utc).astimezone(tz)
+
+
+def now_in(tz):
+    return dt.datetime.now(dt.timezone.utc).astimezone(tz)
 
 
 def resolve_root(arg_root):
@@ -118,15 +147,18 @@ def resolve_root(arg_root):
 def resolve_window(args, tz):
     """Return [start, end). `end` is the day after --to, at the day-start hour."""
     off = dt.timedelta(hours=args.day_start)
+    # shift the naive wall clock first, then localise, so the offset is the one in
+    # force on that date rather than the one in force today
     if args.date_from:
-        start = dt.datetime.fromisoformat(args.date_from).replace(tzinfo=tz) + off
+        start = as_local(dt.datetime.fromisoformat(args.date_from) + off, tz)
     else:
-        today = (dt.datetime.now(tz) - off).date()
-        start = dt.datetime.combine(today - dt.timedelta(days=args.days - 1), dt.time(), tz) + off
+        today = (now_in(tz) - off).date()
+        first = today - dt.timedelta(days=args.days - 1)
+        start = as_local(dt.datetime.combine(first, dt.time()) + off, tz)
     if args.date_to:
-        end = dt.datetime.fromisoformat(args.date_to).replace(tzinfo=tz) + off + dt.timedelta(days=1)
+        end = as_local(dt.datetime.fromisoformat(args.date_to) + off + dt.timedelta(days=1), tz)
     else:
-        end = dt.datetime.now(tz) + dt.timedelta(seconds=1)
+        end = now_in(tz) + dt.timedelta(seconds=1)
     return start, end
 
 
@@ -185,8 +217,11 @@ def collect(root, start, end, tz, day_start, only, exclude, t):
             continue
         with fh:
             for line in fh:
-                # cheap reject first; full parse only for lines that can carry a timestamp
-                if '"timestamp":"' not in line:
+                # cheap reject first; full parse only for lines that can carry a
+                # timestamp. Kept whitespace-insensitive on purpose: matching the
+                # compact '"timestamp":"' would silently drop every line if the
+                # transcripts were ever written with spaces after the colon.
+                if "timestamp" not in line:
                     continue
                 try:
                     rec = json.loads(line)
@@ -219,6 +254,44 @@ def active_seconds(eps, idle_gap):
         return 0.0
     eps = sorted(eps)
     return sum(b - a for a, b in zip(eps, eps[1:]) if b - a <= idle_gap)
+
+
+def hour_histogram(eps, idle_gap, tz, hours=None):
+    """Same stitched spans as active_seconds, but split across the clock hours they
+    cover. A span from 23:40 to 00:20 is 20 minutes of hour 23 and 20 of hour 0 —
+    not 40 minutes of whichever end you happened to pick."""
+    hours = [0.0] * 24 if hours is None else hours
+    eps = sorted(eps)
+    for a, b in zip(eps, eps[1:]):
+        if b - a > idle_gap:
+            continue
+        cur = a
+        while cur < b:
+            here = from_epoch(cur, tz)
+            edge = (here.replace(minute=0, second=0, microsecond=0)
+                    + dt.timedelta(hours=1)).timestamp()
+            stop = min(b, edge)
+            hours[here.hour] += stop - cur
+            cur = stop
+    return hours
+
+
+SPARK = " ▁▂▃▄▅▆▇█"
+
+
+def sparkline(values):
+    peak = max(values) or 1
+    return "".join(SPARK[min(len(SPARK) - 1, int(v / peak * (len(SPARK) - 1) + 0.5))]
+                   for v in values)
+
+
+def longest_streak(rows):
+    """Most consecutive days worked without one off."""
+    best = run = 0
+    for r in rows:
+        run = run + 1 if r["n_event"] else 0
+        best = max(best, run)
+    return best
 
 
 def hm(sec):
@@ -274,14 +347,14 @@ def main():
             active=active_seconds(eps, idle),
             active_tight=active_seconds(eps, tight),
             typed=active_seconds(prompts.get(day) or [], idle),
-            first=dt.datetime.fromtimestamp(min(eps), tz) if eps else None,
-            last=dt.datetime.fromtimestamp(max(eps), tz) if eps else None,
+            first=from_epoch(min(eps), tz) if eps else None,
+            last=from_epoch(max(eps), tz) if eps else None,
             n_prompt=len(prompts.get(day) or []), n_session=len(sessions.get(day) or ()),
             n_event=len(eps),
             top=sorted(projects[day].items(), key=lambda kv: -kv[1])[:3] if eps else [],
         ))
 
-    tz_hours = tz.utcoffset(dt.datetime.now()).total_seconds() / 3600
+    tz_hours = now_in(tz).utcoffset().total_seconds() / 3600
     # label the period with the day keys actually counted, not the shifted boundary
     print("\n" + t["period"].format(a=rows[0]["day"], b=rows[-1]["day"], h=f"{args.day_start:g}",
                                     i=f"{args.idle:g}", tz=f"{tz_hours:+g}") + "\n")
@@ -306,7 +379,7 @@ def main():
     n_worked = sum(1 for r in rows if r["n_event"])
     print(t["total"].format(t=hm(total), d=len(rows), avg=hm(total / len(rows)),
                             p=sum(r["n_prompt"] for r in rows)))
-    print(t["total2"].format(w=n_worked, o=len(rows) - n_worked,
+    print(t["total2"].format(w=n_worked, o=len(rows) - n_worked, s=longest_streak(rows),
                              avgw=hm(total / n_worked) if n_worked else hm(0)))
     print(t["total3"].format(i=f"{args.idle_tight:g}", t=hm(total_tight), s=shrink,
                              f=hm(sum(r["typed"] for r in rows))))
@@ -321,6 +394,15 @@ def main():
         print(t["weekly_row"].format(a=wk, b=wk + dt.timedelta(days=6), t=hm(s),
                                      d=len(rs), w=sum(1 for r in rs if r["n_event"]),
                                      avg=hm(s / len(rs))))
+
+    clock = [0.0] * 24
+    for day in events:
+        hour_histogram(events[day], idle, tz, clock)
+    span = sum(clock) or 1
+    print("\n" + t["clock"])
+    print("0h " + sparkline(clock) + " 24h")
+    print("  ·  ".join(f"{name} {100 * sum(clock[a:b]) / span:.0f}%"
+                       for name, a, b in t["buckets"]))
 
     print("\n" + t["projects"])
     for r in rows:

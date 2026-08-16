@@ -88,7 +88,11 @@ Weeks start Monday. Include how many days of each week had any activity.
 
 Write what can be *read*, rather than restating the table. Useful axes:
 
-- How many days off. Zero days off is itself the finding.
+- How many days off, and the longest streak without one. Zero days off is itself
+  the finding, and the script prints the streak — quote it rather than counting rows.
+- The share of hours in the `00-05` bucket. Twelve hours starting at 09:00 and twelve
+  starting at 14:00 are not the same life, and the daily table alone cannot tell them
+  apart. This is the sharpest burnout signal in the output.
 - How many days crossed midnight, or 4am.
 - Whether a recovery pattern appears — a short day right after an all-nighter.
 - Where the top-3 projects cluster.
@@ -108,6 +112,10 @@ Attach `<limits>` verbatim.
   to 15 minutes usually trims about 10%.
 - **Typed is a floor.** It spans only the turns you typed yourself. The real figure is
   between the two.
+- **Every run of work is cut short at its end.** A stitched run stops at its last
+  event, so the time you spend reading the final answer, or thinking before you close
+  the laptop, is never counted. This bias pulls the opposite way from the ceiling
+  above, on every block of every day.
 - **Work without Claude is invisible.** Meetings, Slack, browser QA, reading code, poking
   at a production database — none of it appears here. Your real hours are certainly
   higher than this table. It is not an attendance record and cannot be used as one.
